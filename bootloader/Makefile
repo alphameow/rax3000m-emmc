@@ -12,19 +12,30 @@ BUILD_ATF_PATH = $(BUILD_DIR)/atf
 
 MKIMG_FILE = $(BUILD_UBOOT_PATH)/tools/mkimage
 BL33_FILE =  $(BUILD_UBOOT_PATH)/u-boot.bin
-BL2_FILE = $(BUILD_ATF_PATH)/$(MT_PLAT)/release/bl2.img
+BL2_FILE = $(BUILD_ATF_PATH)/$(MT_PLAT)/release/bl2.bin
 FIP_FILE = $(BUILD_ATF_PATH)/$(MT_PLAT)/release/fip.bin
+
+BL2_IMG = $(BUILD_ATF_PATH)/$(MT_PLAT)/release/bl2.img
 
 UBOOT_CONFIG := mt7981_rax3000m_defconfig
 
-all: uboot atf 
+all_ram: clean uboot atf_ram
+all_emmc: clean uboot atf_emmc
+all: all_ram all_emmc
 
 uboot:
 	$(MAKE) -C u-boot O=$(BUILD_UBOOT_PATH) $(UBOOT_CONFIG)
 	$(MAKE) -C u-boot O=$(BUILD_UBOOT_PATH) CROSS_COMPILE=$(AARCH64_CROSS_COMPILE)
 
-atf:
+atf_ram:
 	$(MAKE) -C atf BUILD_BASE=$(BUILD_ATF_PATH) CROSS_COMPILE=$(AARCH64_CROSS_COMPILE) PLAT=$(MT_PLAT) MKIMAGE=$(MKIMG_FILE) BL33=$(BL33_FILE) BOOT_DEVICE=ram USE_MKIMAGE=1 BOARD_BGA=1 HAVE_DRAM_OBJ_FILE=yes DRAM_USE_DDR4=1 RAM_BOOT_UART_DL=1 all fip
+	dd if=$(BL2_FILE) of=$(OUTPUT_DIR)/bl2-ram.bin
+	dd if=$(FIP_FILE) of=$(OUTPUT_DIR)/fip-ram.bin
+
+atf_emmc:
+	$(MAKE) -C atf BUILD_BASE=$(BUILD_ATF_PATH) CROSS_COMPILE=$(AARCH64_CROSS_COMPILE) PLAT=$(MT_PLAT) MKIMAGE=$(MKIMG_FILE) BL33=$(BL33_FILE) BOOT_DEVICE=emmc USE_MKIMAGE=1 BOARD_BGA=1 HAVE_DRAM_OBJ_FILE=yes DRAM_USE_DDR4=1 all fip
+	dd if=$(BL2_IMG) of=$(OUTPUT_DIR)/bl2-emmc.img
+	dd if=$(FIP_FILE) of=$(OUTPUT_DIR)/fip-emmc.bin
 
 clean:
 	rm -rf $(BUILD_DIR)
