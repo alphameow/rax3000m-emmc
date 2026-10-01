@@ -1,5 +1,7 @@
-.PHONY: all clean help
-.PHONY: atf uboot 
+.PHONY: clean help
+.PHONY: all uboot 
+.PHONY: all_ram atf_ram
+.PHONY: all_emmc atf_emmc
 
 TOPDIR := $(CURDIR)
 AARCH64_CROSS_COMPILE ?= aarch64-linux-gnu-
@@ -19,9 +21,11 @@ BL2_IMG = $(BUILD_ATF_PATH)/$(MT_PLAT)/release/bl2.img
 
 UBOOT_CONFIG := mt7981_rax3000m_defconfig
 
+.DEFAULT_GOAL := all
+
+all: all_ram all_emmc
 all_ram: clean uboot atf_ram
 all_emmc: clean uboot atf_emmc
-all: all_ram all_emmc
 
 uboot:
 	$(MAKE) -C u-boot O=$(BUILD_UBOOT_PATH) $(UBOOT_CONFIG)
