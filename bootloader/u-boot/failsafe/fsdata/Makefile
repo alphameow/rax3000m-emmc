@@ -37,6 +37,10 @@ obj-y += style.o
 FILE_style.o := style.css
 FSPATH_style.o := style.css
 
+obj-y += console.o
+FILE_console.o := console.html
+FSPATH_console.o := console.html
+
 # customized build rules
 strip_path = $(subst /,_,$(subst -,_,$(subst .,_,$(1))))
 

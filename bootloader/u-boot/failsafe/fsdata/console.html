@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>U-Boot Console</title>
+<style>
+body {
+    font-family: monospace;
+    margin: 30px;
+}
+#cmd {
+    width: 70%;
+    padding: 8px;
+}
+button {
+    padding: 8px 20px;
+}
+#output {
+    margin-top: 20px;
+    padding: 12px;
+    background: #eee;
+    white-space: pre-wrap;
+    min-height: 200px;
+}
+</style>
+</head>
+
+<body>
+
+<input id="cmd" type="text" autofocus>
+<button onclick="runCommand()">Execute</button>
+
+<pre id="output"></pre>
+
+<script>
+async function runCommand()
+{
+    const cmd = document.getElementById("cmd");
+    const output = document.getElementById("output");
+
+    if (!cmd.value)
+        return;
+
+    output.textContent = "Executing...\n";
+
+    const form = new FormData();
+    form.append("cmd", cmd.value);
+
+    try {
+        const response = await fetch("/command", {
+            method: "POST",
+            body: form
+        });
+
+        output.textContent = await response.text();
+    } catch (e) {
+        output.textContent = "HTTP error: " + e;
+    }
+}
+
+document.getElementById("cmd").addEventListener("keydown", function(e) {
+    if (e.key === "Enter")
+        runCommand();
+});
+</script>
+
+</body>
+</html>

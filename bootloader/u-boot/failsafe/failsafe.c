@@ -15,7 +15,14 @@
 #include <net/mtk_httpd.h>
 #include <u-boot/md5.h>
 #include <vsprintf.h>
+#include <console.h>
 #include "fs.h"
+
+#define WEB_CMD_MAX        512
+#define WEB_CMD_OUTPUT_MAX 0x10000
+
+static char web_cmd_buf[WEB_CMD_MAX];
+static char web_cmd_output[WEB_CMD_OUTPUT_MAX];
 
 static u32 upload_data_id;
 static const void *upload_data;
@@ -282,6 +289,123 @@ static void not_found_handler(enum httpd_uri_handler_status status,
 	}
 }
 
+static void command_handler(enum httpd_uri_handler_status status,
+			    struct httpd_request *request,
+			    struct httpd_response *response)
+{
+	struct httpd_form_value *cmdval;
+	size_t used = 0;
+	int ret;
+	int n;
+
+	if (status != HTTP_CB_NEW)
+		return;
+
+	response->status = HTTP_RESP_STD;
+	response->info.code = 200;
+	response->info.connection_close = 1;
+	response->info.content_type = "text/plain";
+
+	cmdval = httpd_request_find_value(request, "cmd");
+	if (!cmdval || !cmdval->data || !cmdval->size) {
+		response->data = "Error: no command specified\n";
+		response->size = strlen(response->data);
+		response->info.code = 400;
+		return;
+	}
+
+	if (cmdval->size >= sizeof(web_cmd_buf)) {
+		response->data = "Error: command too long\n";
+		response->size = strlen(response->data);
+		response->info.code = 400;
+		return;
+	}
+
+	/*
+	 * 不要直接使用 cmdval->data。
+	 * 显式复制并加 '\0'。
+	 */
+	memcpy(web_cmd_buf, cmdval->data, cmdval->size);
+	web_cmd_buf[cmdval->size] = '\0';
+
+	memset(web_cmd_output, 0, sizeof(web_cmd_output));
+
+	/*
+	 * 清空并启动 console recorder。
+	 * 从这里之后 run_command() 产生的 puts/printf 都会被记录。
+	 */
+	ret = console_record_reset_enable();
+	if (ret) {
+		snprintf(web_cmd_output, sizeof(web_cmd_output),
+			 "Error: console recorder unavailable (%d)\n", ret);
+
+		response->data = web_cmd_output;
+		response->size = strlen(web_cmd_output);
+		response->info.code = 500;
+		return;
+	}
+
+	/*
+	 * 和串口 console 输入命令走的是同一套命令解释器。
+	 */
+	ret = run_command(web_cmd_buf, 0);
+
+	/*
+	 * 把 recorder 中的数据读出来。
+	 */
+	while (console_record_avail() > 0 &&
+	       used < sizeof(web_cmd_output) - 1) {
+		n = console_record_readline(web_cmd_output + used,
+					    sizeof(web_cmd_output) - used);
+
+		if (n < 0) {
+			if (used < sizeof(web_cmd_output) - 64) {
+				used += snprintf(web_cmd_output + used,
+						 sizeof(web_cmd_output) - used,
+						 "\n[console output overflow]\n");
+			}
+			break;
+		}
+
+		if (!n)
+			break;
+
+		used += n;
+
+		/* console_record_readline() 不保留换行，手工补上 */
+		if (used < sizeof(web_cmd_output) - 1)
+			web_cmd_output[used++] = '\n';
+	}
+
+	if (!used) {
+		used = snprintf(web_cmd_output,
+				sizeof(web_cmd_output),
+				"(no output)\n");
+	}
+
+	/*
+	 * 额外显示 U-Boot command 返回值。
+	 */
+	if (used < sizeof(web_cmd_output) - 32) {
+		used += snprintf(web_cmd_output + used,
+				 sizeof(web_cmd_output) - used,
+				 "\n[return code: %d]\n", ret);
+	}
+
+	web_cmd_output[sizeof(web_cmd_output) - 1] = '\0';
+
+	response->data = web_cmd_output;
+	response->size = used;
+}
+
+static void console_handler(enum httpd_uri_handler_status status,
+			  struct httpd_request *request,
+			  struct httpd_response *response)
+{
+	if (status == HTTP_CB_NEW)
+		output_plain_file(response, "console.html");
+}
+
 int start_web_failsafe(void)
 {
 	struct httpd_instance *inst;
@@ -303,6 +427,9 @@ int start_web_failsafe(void)
 	httpd_register_uri_handler(inst, "/result", &result_handler, NULL);
 	httpd_register_uri_handler(inst, "/style.css", &style_handler, NULL);
 	httpd_register_uri_handler(inst, "", &not_found_handler, NULL);
+
+	httpd_register_uri_handler(inst, "/command", &command_handler, NULL);
+	httpd_register_uri_handler(inst, "/console.html", &console_handler, NULL);
 
 	net_loop(MTK_TCP);
 
