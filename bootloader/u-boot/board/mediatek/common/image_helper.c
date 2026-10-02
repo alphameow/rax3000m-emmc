@@ -302,6 +302,7 @@ const char *fit_image_conf_def(const void *fit)
 	return fit_get_name(fit, noffset, NULL);
 }
 
+#if 0
 u32 itb_image_size(const void *fit)
 {
 	int images_noffset, noffset, ndepth, count, ret;
@@ -348,7 +349,75 @@ u32 itb_image_size(const void *fit)
 
 	return end;
 }
+#else
+u32 itb_image_size(const void *fit)
+{
+	int images_noffset, noffset, ndepth, ret;
+	u32 offset, position, len, end = 0;
+	u32 image_end;
+	u32 fit_size;
 
+	fit_size = (fdt_totalsize(fit) + 3) & ~3;
+
+	images_noffset = fdt_path_offset(fit, FIT_IMAGES_PATH);
+	if (images_noffset < 0) {
+		debug("itb node '%s' not found\n", FIT_IMAGES_PATH);
+		return 0;
+	}
+
+	for (ndepth = 0,
+	     noffset = fdt_next_node(fit, images_noffset, &ndepth);
+	     (noffset >= 0) && (ndepth > 0);
+	     noffset = fdt_next_node(fit, noffset, &ndepth)) {
+
+		if (ndepth != 1)
+			continue;
+
+		ret = fit_image_get_data_size(fit, noffset, &len);
+		if (ret)
+			continue;
+
+		/* data-position: absolute offset from beginning of FIT */
+		ret = fit_image_get_data_position(fit, noffset, &position);
+		if (!ret) {
+			image_end = position + len;
+
+			if (image_end > end)
+				end = image_end;
+
+			debug("image '%s' pos = 0x%x, len = 0x%x, end = 0x%x\n",
+			      fit_get_name(fit, noffset, NULL),
+			      position, len, image_end);
+
+			continue;
+		}
+
+		/* data-offset: relative to end of FIT metadata */
+		ret = fit_image_get_data_offset(fit, noffset, &offset);
+		if (!ret) {
+			image_end = fit_size + offset + len;
+
+			if (image_end > end)
+				end = image_end;
+
+			debug("image '%s' offs = 0x%x, len = 0x%x, end = 0x%x\n",
+			      fit_get_name(fit, noffset, NULL),
+			      offset, len, image_end);
+		}
+	}
+
+	if (!end) {
+		debug("FIT image has no external data\n");
+		return 0;
+	}
+
+	debug("itb image size = %uB (0x%xB)\n", end, end);
+
+	return end;
+}
+#endif
+
+#if 0
 static int itb_external_image_data_info(const void *fit, int cfg_noffset,
 					const char *prop_name, u32 *data_offset,
 					u32 *data_len)
@@ -396,6 +465,75 @@ static int itb_external_image_data_info(const void *fit, int cfg_noffset,
 
 	return 0;
 }
+#else
+static int itb_external_image_data_info(const void *fit, int cfg_noffset,
+					const char *prop_name, u32 *data_offset,
+					u32 *data_len)
+{
+	int ret, noffset;
+	u32 offset, len;
+	bool is_position = false;
+
+	noffset = fit_conf_get_prop_node_index(fit, cfg_noffset,
+					       prop_name, 0);
+	if (noffset < 0) {
+		debug("itb cfg prop '%s' not found\n", prop_name);
+		return noffset;
+	}
+
+	debug("itb cfg prop '%s' = %u\n", prop_name, noffset);
+
+	/*
+	 * First try data-position.
+	 *
+	 * data-position is an absolute offset from the
+	 * beginning of the FIT image.
+	 */
+	ret = fit_image_get_data_position(fit, noffset, &offset);
+	if (!ret) {
+		is_position = true;
+		debug("itb cfg prop '%s' uses data-position = 0x%x\n",
+		      prop_name, offset);
+	} else {
+		/*
+		 * Then try data-offset.
+		 *
+		 * data-offset is relative to the end of the
+		 * FIT/FDT metadata area.
+		 */
+		ret = fit_image_get_data_offset(fit, noffset, &offset);
+		if (ret) {
+			debug("itb cfg prop '%s' has no external data\n",
+			      prop_name);
+			return ret;
+		}
+
+		offset += ((fdt_totalsize(fit) + 3) & ~3);
+
+		debug("itb cfg prop '%s' uses data-offset, absolute offset = 0x%x\n",
+		      prop_name, offset);
+	}
+
+	ret = fit_image_get_data_size(fit, noffset, &len);
+	if (ret) {
+		debug("itb cfg prop '%s' has no external data size\n",
+		      prop_name);
+		return ret;
+	}
+
+	debug("itb cfg prop '%s' external data offset = 0x%x, size = 0x%x%s\n",
+	      prop_name, offset, len,
+	      is_position ? " (data-position)" : " (data-offset)");
+
+	if (data_offset)
+		*data_offset = offset;
+
+	if (data_len)
+		*data_len = len;
+
+	return 0;
+}
+#endif
 
 static int parse_image_itb(const void *fit, size_t size, u32 blocksize,
 			   struct owrt_image_info *ii)

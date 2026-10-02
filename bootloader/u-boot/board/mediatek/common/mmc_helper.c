@@ -1244,6 +1244,13 @@ int mmc_boot_image(u32 dev)
 		part_secondary = PART_FIRMWARE_NAME;
 	}
 
+	{
+		const char *boot_part = env_get("boot_part");
+		if (boot_part) {
+			part_primary = boot_part;
+		}
+	}
+
 	ret = boot_from_mmc_partition(dev, 0, part_primary);
 	if (ret == -ENODEV)
 		ret = boot_from_mmc_partition(dev, 0, part_secondary);
@@ -1288,6 +1295,13 @@ static int mmc_upgrade_image_itb(u32 dev, const void *data, size_t size,
 			do_dual_boot_post = true;
 		} else {
 			part = PART_FIRMWARE_NAME;
+			{
+				const char *boot_part = env_get("boot_part");
+				if (boot_part)
+				{
+					part = boot_part;
+				}
+			}
 		}
 	}
 

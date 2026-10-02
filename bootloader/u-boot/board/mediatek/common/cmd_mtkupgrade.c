@@ -160,7 +160,7 @@ static int do_mtkupgrade(struct cmd_tbl *cmdtp, int flag, int argc,
 		if (dpe->validate(dpe->priv, dpe, (void *)data_load_addr,
 				  data_size))
 			return CMD_RET_FAILURE;
-	}
+				  }
 
 	/* Write data */
 	if (dpe->write(dpe->priv, dpe, (void *)data_load_addr, data_size))

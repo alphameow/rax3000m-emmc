@@ -20,6 +20,7 @@
 		bootcmd = "mtkboardboot";
 		blink_led = "blue:status";
 		system_led = "red:status";
+		u-boot,mmc-env-partition = "ubootenv";
 	};
 
 	memory@40000000 {
